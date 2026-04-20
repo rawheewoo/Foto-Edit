@@ -22,6 +22,7 @@ interface Props {
   flipX: boolean;
   snapRotation: number;
   dialAngle: number;
+  photoLocked: boolean;
   items: EditorItem[];
   selectedItemId: string | null;
   eyedropperMode: boolean;
@@ -37,7 +38,7 @@ export interface CanvasHandle {
 }
 
 const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
-  photoSrc, aspectRatio, flipX, snapRotation, dialAngle,
+  photoSrc, aspectRatio, flipX, snapRotation, dialAngle, photoLocked,
   items, selectedItemId, eyedropperMode,
   onItemSelect, onItemChange, onItemDelete, onTextDblClick, onEyedropperSample,
 }: Props, ref) {
@@ -50,13 +51,10 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
   const [overTrash, setOverTrash] = useState(false);
   const [snapLabel, setSnapLabel] = useState<string | null>(null);
   const [photoNaturalSize, setPhotoNaturalSize] = useState<{ w: number; h: number } | null>(null);
-  const pinchRef = useRef<{
-    dist: number; cx: number; cy: number;
-    initPhotoX: number; initPhotoY: number;
-    initScaleAbs: number; signX: number;
-    rafId: number | null;
-  } | null>(null);
-  // rAF와 touchStart 사이의 상태 불일치를 막기 위해 "의도된 최신 상태" 별도 추적
+  type PinchState =
+    | { kind: 'photo';   dist: number; cx: number; cy: number; initX: number; initY: number; initScaleAbs: number; signX: number; rafId: number | null }
+    | { kind: 'sticker'; dist: number; cx: number; cy: number; itemId: string; initX: number; initY: number; initScaleAbs: number; rafId: number | null };
+  const pinchRef = useRef<PinchState | null>(null);
   const lastPhotoStateRef = useRef<{ x: number; y: number; scaleAbs: number; signX: number } | null>(null);
 
   useEffect(() => { setPhotoNaturalSize(null); }, [photoSrc]);
@@ -104,7 +102,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
   // ── 단일 Transformer — 선택된 노드에만 연결 ──────────────────────────────
   useEffect(() => {
     if (!trRef.current || !stageRef.current) return;
-    const nodeId = photoSelected ? 'photo' : selectedItemId;
+    const nodeId = (photoSelected && !photoLocked) ? 'photo' : selectedItemId;
     if (!nodeId) {
       trRef.current.nodes([]);
       trRef.current.getLayer()?.batchDraw();
@@ -158,38 +156,54 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
 
   function handleStageTouchStart(e: any) {
     const touches = e.evt.touches;
-    if (touches.length === 2 && photoSrc) {
-      const photoNode = stageRef.current?.findOne('#photo');
-      if (!photoNode) return;
-      const rect = stageRef.current?.container().getBoundingClientRect();
-      if (!rect) return;
-      const dx = touches[1].clientX - touches[0].clientX;
-      const dy = touches[1].clientY - touches[0].clientY;
-      // rAF 대기 중인 값이 있으면 그걸 사용 (노드의 실제값과 의도값 불일치 방지)
+    if (touches.length !== 2) return;
+    const rect = stageRef.current?.container().getBoundingClientRect();
+    if (!rect) return;
+
+    const dx = touches[1].clientX - touches[0].clientX;
+    const dy = touches[1].clientY - touches[0].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const cx = (touches[0].clientX + touches[1].clientX) / 2 - rect.left;
+    const cy = (touches[0].clientY + touches[1].clientY) / 2 - rect.top;
+
+    if (pinchRef.current?.rafId) cancelAnimationFrame(pinchRef.current.rafId);
+
+    // 핀치 중심에 있는 노드 감지
+    const hitNode = stageRef.current?.getIntersection({ x: cx, y: cy });
+    const hitId = hitNode?.id?.();
+
+    if (hitId === 'photo' && photoSrc && !photoLocked) {
+      // 사진 핀치
+      const photoNode = stageRef.current.findOne('#photo');
       const last = lastPhotoStateRef.current;
-      const initX = last?.x ?? photoNode.x();
-      const initY = last?.y ?? photoNode.y();
-      const initAbs = last?.scaleAbs ?? Math.abs(photoNode.scaleX());
-      const signX = last?.signX ?? (photoNode.scaleX() < 0 ? -1 : 1);
-      if (pinchRef.current?.rafId) cancelAnimationFrame(pinchRef.current.rafId);
       pinchRef.current = {
-        dist: Math.sqrt(dx * dx + dy * dy),
-        cx: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
-        cy: (touches[0].clientY + touches[1].clientY) / 2 - rect.top,
-        initPhotoX: initX,
-        initPhotoY: initY,
-        initScaleAbs: initAbs,
-        signX,
+        kind: 'photo', dist, cx, cy,
+        initX: last?.x ?? photoNode.x(),
+        initY: last?.y ?? photoNode.y(),
+        initScaleAbs: last?.scaleAbs ?? Math.abs(photoNode.scaleX()),
+        signX: last?.signX ?? (photoNode.scaleX() < 0 ? -1 : 1),
         rafId: null,
       };
+    } else if (hitId) {
+      const stickerItem = items.find((i) => i.id === hitId && i.kind === 'sticker');
+      if (stickerItem) {
+        // 스티커 핀치
+        const sNode = stageRef.current.findOne('#' + hitId);
+        pinchRef.current = {
+          kind: 'sticker', dist, cx, cy,
+          itemId: hitId,
+          initX: sNode.x(),
+          initY: sNode.y(),
+          initScaleAbs: Math.abs(sNode.scaleX()),
+          rafId: null,
+        };
+      }
     }
   }
 
   function handleStageTouchMove(e: any) {
     const touches = e.evt.touches;
     if (touches.length !== 2 || !pinchRef.current) return;
-    const photoNode = stageRef.current?.findOne('#photo');
-    if (!photoNode) return;
     e.evt.preventDefault();
 
     const rect = stageRef.current.container().getBoundingClientRect();
@@ -204,26 +218,57 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
     const newAbs = Math.max(0.1, Math.min(10, p.initScaleAbs * ratio));
     const panDx = newCx - p.cx;
     const panDy = newCy - p.cy;
-    const newX = p.cx + (p.initPhotoX - p.cx) * ratio + panDx;
-    const newY = p.cy + (p.initPhotoY - p.cy) * ratio + panDy;
+    const newX = p.cx + (p.initX - p.cx) * ratio + panDx;
+    const newY = p.cy + (p.initY - p.cy) * ratio + panDy;
 
-    // 의도된 최신 상태 기록 (다음 touchStart에서 참조)
-    lastPhotoStateRef.current = { x: newX, y: newY, scaleAbs: newAbs, signX: p.signX };
-
-    if (p.rafId !== null) cancelAnimationFrame(p.rafId);
-    p.rafId = requestAnimationFrame(() => {
-      photoNode.scaleX(p.signX * newAbs);
-      photoNode.scaleY(newAbs);
-      photoNode.x(newX);
-      photoNode.y(newY);
-      photoNode.getLayer()?.batchDraw();
-      p.rafId = null;
-    });
+    if (p.kind === 'photo') {
+      lastPhotoStateRef.current = { x: newX, y: newY, scaleAbs: newAbs, signX: p.signX };
+      if (p.rafId !== null) cancelAnimationFrame(p.rafId);
+      p.rafId = requestAnimationFrame(() => {
+        const node = stageRef.current?.findOne('#photo');
+        if (!node) return;
+        node.scaleX(p.signX * newAbs);
+        node.scaleY(newAbs);
+        node.x(newX);
+        node.y(newY);
+        node.getLayer()?.batchDraw();
+        p.rafId = null;
+      });
+    } else {
+      if (p.rafId !== null) cancelAnimationFrame(p.rafId);
+      p.rafId = requestAnimationFrame(() => {
+        const node = stageRef.current?.findOne('#' + p.itemId);
+        if (!node) return;
+        node.scaleX(newAbs);
+        node.scaleY(newAbs);
+        node.x(newX);
+        node.y(newY);
+        node.getLayer()?.batchDraw();
+        p.rafId = null;
+      });
+    }
   }
 
   function handleStageTouchEnd(e: any) {
     if (e.evt.touches.length < 2) {
-      if (pinchRef.current?.rafId) cancelAnimationFrame(pinchRef.current.rafId);
+      const p = pinchRef.current;
+      if (!p) return;
+      if (p.rafId !== null) cancelAnimationFrame(p.rafId);
+      // 스티커면 React 상태에 반영
+      if (p.kind === 'sticker') {
+        const node = stageRef.current?.findOne('#' + p.itemId);
+        if (node) {
+          const item = items.find((i) => i.id === p.itemId) as StickerItem | undefined;
+          if (item) {
+            const abs = Math.abs(node.scaleX());
+            const newW = item.width * abs;
+            const newH = item.height * abs;
+            node.scaleX(1);
+            node.scaleY(1);
+            onItemChange(p.itemId, { x: node.x(), y: node.y(), scaleX: 1, scaleY: 1, width: newW, height: newH });
+          }
+        }
+      }
       pinchRef.current = null;
     }
   }
@@ -250,7 +295,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
     <div
       ref={containerRef}
       className="flex-1 flex items-center justify-center touch-none overflow-hidden"
-      style={{ backgroundColor: '#FFFFFF', cursor: eyedropperMode ? 'crosshair' : 'default' }}
+      style={{ backgroundColor: '#e8e8e8', cursor: eyedropperMode ? 'crosshair' : 'default' }}
     >
       {stageW > 0 && stageH > 0 && (
         <div className="shadow-lg relative">
@@ -276,7 +321,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
                   flipX={flipX}
                   snapRotation={snapRotation}
                   dialAngle={dialAngle}
-                  onSelect={() => { setPhotoSelected(true); onItemSelect(null); }}
+                  locked={photoLocked}
+                  onSelect={() => { if (!photoLocked) { setPhotoSelected(true); onItemSelect(null); } }}
                   onLoad={(w, h) => setPhotoNaturalSize({ w, h })}
                 />
               )}
@@ -370,9 +416,10 @@ export default Canvas;
 
 // ─── PhotoImage ────────────────────────────────────────────────────────────────
 
-function PhotoImage({ src, stageW, stageH, flipX, snapRotation, dialAngle, onSelect, onLoad }: {
+function PhotoImage({ src, stageW, stageH, flipX, snapRotation, dialAngle, locked, onSelect, onLoad }: {
   src: string; stageW: number; stageH: number;
   flipX: boolean; snapRotation: number; dialAngle: number;
+  locked?: boolean;
   onSelect: () => void;
   onLoad?: (w: number, h: number) => void;
 }) {
@@ -427,7 +474,7 @@ function PhotoImage({ src, stageW, stageH, flipX, snapRotation, dialAngle, onSel
   }, [dialAngle, img]);
 
   if (!img) return null;
-  return <KonvaImage id="photo" ref={imageRef} image={img} draggable onClick={onSelect} onTap={onSelect} />;
+  return <KonvaImage id="photo" ref={imageRef} image={img} draggable={!locked} onClick={onSelect} onTap={onSelect} />;
 }
 
 // ─── TextNode ─────────────────────────────────────────────────────────────────

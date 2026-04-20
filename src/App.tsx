@@ -23,6 +23,7 @@ function App() {
   const [items, setItems] = useState<EditorItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
+  const [photoLocked, setPhotoLocked] = useState(false);
   const [textModalOpen, setTextModalOpen] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [eyedropperMode, setEyedropperMode] = useState(false);
@@ -42,6 +43,7 @@ function App() {
     setFlipX(false);
     setSnapRotation(0);
     setDialAngle(0);
+    setPhotoLocked(false);
   }
 
   // ── 텍스트 ────────────────────────────────────────
@@ -235,6 +237,9 @@ function App() {
         onFileChange={handleFileChange}
         onFlip={() => setFlipX((v) => !v)}
         onRotate={() => setSnapRotation((v) => (v + 90) % 360)}
+        photoSrc={photoSrc}
+        photoLocked={photoLocked}
+        onPhotoLockToggle={() => setPhotoLocked((v) => !v)}
       />
       <Canvas
         ref={canvasRef}
@@ -243,6 +248,7 @@ function App() {
         flipX={flipX}
         snapRotation={snapRotation}
         dialAngle={dialAngle}
+        photoLocked={photoLocked}
         items={items}
         selectedItemId={selectedItemId}
         eyedropperMode={eyedropperMode}

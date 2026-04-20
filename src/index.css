@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 @font-face { font-family: 'KimjungchulGothic';  src: url('/fonts/KimjungchulGothic-Light.otf') format('opentype'); }
 @font-face { font-family: 'KimjungchulMyungjo'; src: url('/fonts/KimjungchulMyungjo-Light.otf') format('opentype'); }
 @font-face { font-family: 'KimjungchulScript';  src: url('/fonts/KimjungchulScript-Regular.otf') format('opentype'); }
