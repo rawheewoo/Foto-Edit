@@ -17,7 +17,7 @@ export default function TopBar({ aspectRatio, onAspectRatioChange, onFileChange,
       style={{ backgroundColor: '#FFFFFF' }}
     >
       {/* 사진 불러오기 */}
-      <label className="px-3 py-2 text-white text-sm rounded-lg min-h-[44px] min-w-[44px] flex items-center cursor-pointer" style={{ backgroundColor: '#FF6347' }}>
+      <label className="w-10 h-10 rounded-full text-white text-xs font-medium flex items-center justify-center cursor-pointer shrink-0" style={{ backgroundColor: '#FF6347' }}>
         사진
         <input
           type="file"
@@ -38,7 +38,7 @@ export default function TopBar({ aspectRatio, onAspectRatioChange, onFileChange,
           <button
             key={ratio}
             onClick={() => onAspectRatioChange(ratio)}
-            className={`px-2 py-2 text-xs rounded min-h-[44px] min-w-[44px] ${
+            className={`w-10 h-10 rounded-full text-[11px] shrink-0 ${
               aspectRatio === ratio
                 ? 'text-white'
                 : 'bg-zinc-100 text-zinc-700'
@@ -55,14 +55,14 @@ export default function TopBar({ aspectRatio, onAspectRatioChange, onFileChange,
       {/* 뒤집기 / 회전 */}
       <button
         onClick={onFlip}
-        className="px-2 py-2 bg-zinc-100 text-zinc-700 text-lg rounded min-h-[44px] min-w-[44px]"
+        className="w-10 h-10 rounded-full bg-zinc-100 text-zinc-700 text-base shrink-0"
         title="좌우 뒤집기"
       >
         ↔
       </button>
       <button
         onClick={onRotate}
-        className="px-2 py-2 bg-zinc-100 text-zinc-700 text-lg rounded min-h-[44px] min-w-[44px]"
+        className="w-10 h-10 rounded-full bg-zinc-100 text-zinc-700 text-base shrink-0"
         title="180도 회전"
       >
         ↻

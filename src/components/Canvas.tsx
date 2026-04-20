@@ -50,6 +50,14 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
   const [overTrash, setOverTrash] = useState(false);
   const [snapLabel, setSnapLabel] = useState<string | null>(null);
   const [photoNaturalSize, setPhotoNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const pinchRef = useRef<{
+    dist: number; cx: number; cy: number;
+    initPhotoX: number; initPhotoY: number;
+    initScaleAbs: number; signX: number;
+    rafId: number | null;
+  } | null>(null);
+  // rAF와 touchStart 사이의 상태 불일치를 막기 위해 "의도된 최신 상태" 별도 추적
+  const lastPhotoStateRef = useRef<{ x: number; y: number; scaleAbs: number; signX: number } | null>(null);
 
   useEffect(() => { setPhotoNaturalSize(null); }, [photoSrc]);
 
@@ -148,6 +156,78 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
     }
   }
 
+  function handleStageTouchStart(e: any) {
+    const touches = e.evt.touches;
+    if (touches.length === 2 && photoSrc) {
+      const photoNode = stageRef.current?.findOne('#photo');
+      if (!photoNode) return;
+      const rect = stageRef.current?.container().getBoundingClientRect();
+      if (!rect) return;
+      const dx = touches[1].clientX - touches[0].clientX;
+      const dy = touches[1].clientY - touches[0].clientY;
+      // rAF 대기 중인 값이 있으면 그걸 사용 (노드의 실제값과 의도값 불일치 방지)
+      const last = lastPhotoStateRef.current;
+      const initX = last?.x ?? photoNode.x();
+      const initY = last?.y ?? photoNode.y();
+      const initAbs = last?.scaleAbs ?? Math.abs(photoNode.scaleX());
+      const signX = last?.signX ?? (photoNode.scaleX() < 0 ? -1 : 1);
+      if (pinchRef.current?.rafId) cancelAnimationFrame(pinchRef.current.rafId);
+      pinchRef.current = {
+        dist: Math.sqrt(dx * dx + dy * dy),
+        cx: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+        cy: (touches[0].clientY + touches[1].clientY) / 2 - rect.top,
+        initPhotoX: initX,
+        initPhotoY: initY,
+        initScaleAbs: initAbs,
+        signX,
+        rafId: null,
+      };
+    }
+  }
+
+  function handleStageTouchMove(e: any) {
+    const touches = e.evt.touches;
+    if (touches.length !== 2 || !pinchRef.current) return;
+    const photoNode = stageRef.current?.findOne('#photo');
+    if (!photoNode) return;
+    e.evt.preventDefault();
+
+    const rect = stageRef.current.container().getBoundingClientRect();
+    const dx = touches[1].clientX - touches[0].clientX;
+    const dy = touches[1].clientY - touches[0].clientY;
+    const newDist = Math.sqrt(dx * dx + dy * dy);
+    const newCx = (touches[0].clientX + touches[1].clientX) / 2 - rect.left;
+    const newCy = (touches[0].clientY + touches[1].clientY) / 2 - rect.top;
+
+    const p = pinchRef.current;
+    const ratio = newDist / p.dist;
+    const newAbs = Math.max(0.1, Math.min(10, p.initScaleAbs * ratio));
+    const panDx = newCx - p.cx;
+    const panDy = newCy - p.cy;
+    const newX = p.cx + (p.initPhotoX - p.cx) * ratio + panDx;
+    const newY = p.cy + (p.initPhotoY - p.cy) * ratio + panDy;
+
+    // 의도된 최신 상태 기록 (다음 touchStart에서 참조)
+    lastPhotoStateRef.current = { x: newX, y: newY, scaleAbs: newAbs, signX: p.signX };
+
+    if (p.rafId !== null) cancelAnimationFrame(p.rafId);
+    p.rafId = requestAnimationFrame(() => {
+      photoNode.scaleX(p.signX * newAbs);
+      photoNode.scaleY(newAbs);
+      photoNode.x(newX);
+      photoNode.y(newY);
+      photoNode.getLayer()?.batchDraw();
+      p.rafId = null;
+    });
+  }
+
+  function handleStageTouchEnd(e: any) {
+    if (e.evt.touches.length < 2) {
+      if (pinchRef.current?.rafId) cancelAnimationFrame(pinchRef.current.rafId);
+      pinchRef.current = null;
+    }
+  }
+
   function handleStageClick(e: any) {
     if (eyedropperMode) {
       const pos = stageRef.current?.getPointerPosition();
@@ -181,6 +261,9 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
             style={{ background: '#f4f4f4', display: 'block' }}
             onClick={handleStageClick}
             onTap={handleStageClick}
+            onTouchStart={handleStageTouchStart}
+            onTouchMove={handleStageTouchMove}
+            onTouchEnd={handleStageTouchEnd}
           >
             <Layer>
               <Rect name="bg" x={0} y={0} width={stageW} height={stageH} fill="#ffffff" />
