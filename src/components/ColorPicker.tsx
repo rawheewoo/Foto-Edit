@@ -48,10 +48,12 @@ export default function ColorPicker({ dominantColors, currentColor, position, on
         )}
 
         {/* 기본 팔레트 */}
-        <div className="flex gap-1.5 flex-wrap justify-center">
-          {BASIC_PALETTE.map((c) => (
-            <ColorDot key={c} color={c} selected={c === currentColor} onClick={() => onChange(c)} />
-          ))}
+        <div className="overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <div className="grid gap-1.5" style={{ gridTemplateRows: 'repeat(2, 28px)', gridAutoFlow: 'column', gridAutoColumns: '28px' }}>
+            {BASIC_PALETTE.map((c) => (
+              <ColorDot key={c} color={c} selected={c === currentColor} onClick={() => onChange(c)} />
+            ))}
+          </div>
         </div>
 
         {/* 커스텀 색 */}
