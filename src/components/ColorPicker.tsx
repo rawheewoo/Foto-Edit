@@ -8,6 +8,7 @@ const BASIC_PALETTE = [
   '#4682B4', '#87CEFA', '#00CED1', '#1E90FF', '#6495ED', '#0000CD', '#000080',
   '#7B68EE', '#9400D3', '#4B0082', '#DB7093',
   '#DCDCDC', '#C0C0C0', '#778899', '#696969', '#000000', '#FFFFFF',
+  '#FFFFE0', '#FFFFF0', '#FFFAF0', '#F0F8FF',
 ];
 
 interface Props {
