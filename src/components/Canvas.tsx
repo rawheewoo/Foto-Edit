@@ -120,7 +120,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({
   stageW = Math.floor(stageW);
   stageH = Math.floor(stageH);
 
-  const keepRatio = photoSelected;
+  const selectedItem = items.find((i) => i.id === selectedItemId);
+  const keepRatio = photoSelected || selectedItem?.kind === 'sticker';
 
   // Trash zone: bottom-center of stage, 80×80px
   const TRASH_W = 80;
