@@ -135,17 +135,45 @@ export default function StickerCropModal({ previewSrc, onConfirm, onCancel }: Pr
 
   function handleConfirm() {
     const img = imgRef.current;
-    if (!img) return;
+    if (!img || !naturalSize) return;
+
+    // 화면상 totalScale: 원본 1px = 화면 totalScale px
+    const totalScale = fitScale * view.us;
+
+    // 뷰포트(0,0)~(CROP_SIZE,CROP_SIZE)에 대응하는 원본 이미지 좌표 역산
+    const rawSrcX = -imgLeft / totalScale;
+    const rawSrcY = -imgTop / totalScale;
+    const rawSrcW = CROP_SIZE / totalScale;
+    const rawSrcH = CROP_SIZE / totalScale;
+
+    // 원본 이미지 경계로 clamp
+    const srcX = Math.max(0, rawSrcX);
+    const srcY = Math.max(0, rawSrcY);
+    const srcW = Math.min(naturalSize.w, rawSrcX + rawSrcW) - srcX;
+    const srcH = Math.min(naturalSize.h, rawSrcY + rawSrcH) - srcY;
+
+    if (srcW <= 0 || srcH <= 0) return;
+
+    // 원본 해상도 유지 (메모리 보호용 최대 4096px 제한)
+    const MAX_SIZE = 4096;
+    const outputScale = Math.min(1, MAX_SIZE / Math.max(srcW, srcH));
+    const canvasW = Math.round(srcW * outputScale);
+    const canvasH = Math.round(srcH * outputScale);
+
     const canvas = document.createElement('canvas');
-    canvas.width = CROP_SIZE;
-    canvas.height = CROP_SIZE;
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     const ctx = canvas.getContext('2d')!;
+
     if (shape === 'circle') {
+      const r = Math.min(canvasW, canvasH) / 2;
       ctx.beginPath();
-      ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(canvasW / 2, canvasH / 2, r, 0, Math.PI * 2);
       ctx.clip();
     }
-    ctx.drawImage(img, imgLeft, imgTop, drawW, drawH);
+
+    // 원본 픽셀 좌표에서 직접 그림 → 해상도 손실 없음
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, canvasW, canvasH);
     onConfirm(canvas.toDataURL('image/png'));
   }
 
